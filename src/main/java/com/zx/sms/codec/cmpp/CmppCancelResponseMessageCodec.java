@@ -3,6 +3,7 @@
  */
 package com.zx.sms.codec.cmpp;
 
+import static com.zx.sms.common.util.NettyByteBufUtil.toArray;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -16,7 +17,6 @@ import com.zx.sms.codec.cmpp.msg.Message;
 import com.zx.sms.codec.cmpp.packet.CmppCancelResponse;
 import com.zx.sms.codec.cmpp.packet.CmppPacketType;
 import com.zx.sms.codec.cmpp.packet.PacketType;
-
 /**
  * @author huzorro(huzorro@gmail.com)
  * @author Lihuanghe(18852780@qq.com)
@@ -34,7 +34,7 @@ public class CmppCancelResponseMessageCodec extends MessageToMessageCodec<Messag
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, Message msg, List<Object> out) throws Exception {
-		long commandId = ((Long) msg.getHeader().getCommandId()).longValue();
+		int commandId = msg.getHeader().getCommandId();
 		if (packetType.getCommandId() != commandId)
 		{
 			//不解析，交给下一个codec
@@ -52,10 +52,10 @@ public class CmppCancelResponseMessageCodec extends MessageToMessageCodec<Messag
 	@Override
 	protected void encode(ChannelHandlerContext ctx, CmppCancelResponseMessage msg, List<Object> out) throws Exception {
 
-		ByteBuf bodyBuffer =  Unpooled.buffer(CmppCancelResponse.SUCCESSID.getLength());
+		ByteBuf bodyBuffer =  ctx.alloc().buffer(CmppCancelResponse.SUCCESSID.getBodyLength());
         bodyBuffer.writeInt((int) msg.getSuccessId());
 		
-		msg.setBodyBuffer(bodyBuffer.array());
+		msg.setBodyBuffer(toArray(bodyBuffer,bodyBuffer.readableBytes()));
 		msg.getHeader().setBodyLength(msg.getBodyBuffer().length);
 		ReferenceCountUtil.release(bodyBuffer);
 		out.add(msg);

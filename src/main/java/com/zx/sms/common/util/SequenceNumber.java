@@ -4,7 +4,11 @@
 package com.zx.sms.common.util;
 
 import java.io.Serializable;
-import java.util.concurrent.atomic.AtomicLong;
+import java.text.ParseException;
+import java.util.Date;
+
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
 
 /**
  * @author huzorro(huzorro@gmail.com)
@@ -12,13 +16,11 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class SequenceNumber implements Serializable{
 	private static final long serialVersionUID = 650229326111998772L;
+	private static final String[] datePattern = new String[]{"yyyyMMddHHmmss"};
 	private long nodeIds;
-	private int month;
-	private int day;
-	private int hour;
-	private int minutes;
-	private int seconds;
-	private long sequenceId;
+	private int sequenceId;
+	private long timestamp;
+	
 	public SequenceNumber() {
 		this(CachedMillisecondClock.INS.now());
 	}
@@ -42,14 +44,27 @@ public class SequenceNumber implements Serializable{
 	 * 
 	 * @param msgIds
 	 */
-	public SequenceNumber(String msgIds) {
-		setNodeIds(Long.parseLong(msgIds.substring(0, 10)));
-		setMonth(Integer.parseInt(msgIds.substring(10, 12)));
-		setDay(Integer.parseInt(msgIds.substring(12, 14)));
-		setHour(Integer.parseInt(msgIds.substring(14, 16)));
-		setMinutes(Integer.parseInt(msgIds.substring(16, 18)));
-		setSeconds(Integer.parseInt(msgIds.substring(18, 20)));		
-		setSequenceId(Long.parseLong(msgIds.substring(20, 30)));
+	public SequenceNumber(MsgId msgIds) {
+		String strmsgid = msgIds.toString();
+		setNodeIds(msgIds.getGateId());
+		//sgip协议里时间不带年份信息，这里判断下年份信息
+		String year = DateFormatUtils.format(CachedMillisecondClock.INS.now(), "yyyy");
+		String t = String.format("%1$s%2$s",year, strmsgid.substring(0, 10));
+		
+		Date d;
+		try {
+			d = DateUtils.parseDate(t, datePattern);
+			//如果正好是年末，这个时间有可能差一年，则必须取上一年
+			//这里判断取200天，防止因不同主机时间不同步造成误差
+			if(d.getTime() - CachedMillisecondClock.INS.now() > 86400000L * 200){
+				d = DateUtils.addYears(d, -1);
+			}
+		} catch (ParseException e) {
+			e.printStackTrace();
+			d = new Date();
+		}
+		setTimestamp(d.getTime());		
+		setSequenceId(msgIds.getSequenceId());
 	}	
 	/**
 	 * 
@@ -57,14 +72,10 @@ public class SequenceNumber implements Serializable{
 	 * @param gateId
 	 * @param sequenceId
 	 */
-	public SequenceNumber(long timeMillis, long nodeIds, long sequenceId) {
-		setMonth(Integer.parseInt(String.format("%tm", timeMillis)));
-		setDay(Integer.parseInt(String.format("%td", timeMillis)));
-		setHour(Integer.parseInt(String.format("%tH", timeMillis)));
-		setMinutes(Integer.parseInt(String.format("%tM", timeMillis)));
-		setSeconds(Integer.parseInt(String.format("%tS", timeMillis)));
+	public SequenceNumber(long timeMillis, long nodeIds, int sequenceId) {
 		setNodeIds(nodeIds);
 		setSequenceId(sequenceId);
+		setTimestamp(timeMillis);
 	}
 	/**
 	 * @return the nodeIds
@@ -78,86 +89,41 @@ public class SequenceNumber implements Serializable{
 	public void setNodeIds(long nodeIds) {
 		this.nodeIds = nodeIds;
 	}
-	/**
-	 * @return the month
-	 */
-	public int getMonth() {
-		return month;
-	}
-	/**
-	 * @param month the month to set
-	 */
-	public void setMonth(int month) {
-		this.month = month;
-	}
-	/**
-	 * @return the day
-	 */
-	public int getDay() {
-		return day;
-	}
-	/**
-	 * @param day the day to set
-	 */
-	public void setDay(int day) {
-		this.day = day;
-	}
-	/**
-	 * @return the hour
-	 */
-	public int getHour() {
-		return hour;
-	}
-	/**
-	 * @param hour the hour to set
-	 */
-	public void setHour(int hour) {
-		this.hour = hour;
-	}
-	/**
-	 * @return the minutes
-	 */
-	public int getMinutes() {
-		return minutes;
-	}
-	/**
-	 * @param minutes the minutes to set
-	 */
-	public void setMinutes(int minutes) {
-		this.minutes = minutes;
-	}
-	/**
-	 * @return the seconds
-	 */
-	public int getSeconds() {
-		return seconds;
-	}
-	/**
-	 * @param seconds the seconds to set
-	 */
-	public void setSeconds(int seconds) {
-		this.seconds = seconds;
-	}
+
 	/**
 	 * @return the sequenceId
 	 */
-	public long getSequenceId() {
+	public int getSequenceId() {
 		return sequenceId;
 	}
 	/**
 	 * @param sequenceId the sequenceId to set
 	 */
-	public void setSequenceId(long sequenceId) {
+	public void setSequenceId(int sequenceId) {
 		this.sequenceId = sequenceId;
 	}
+	
+	public String getTimeString() {
+		
+		return DateFormatUtils.format(timestamp, "MMddHHmmss");
+	}
+	
+	public long getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(long timestamp) {
+		this.timestamp = timestamp;
+	}
+
 	/* (non-Javadoc)
 	 * @see java.lang.Object#toString()
 	 */
 	@Override
 	public String toString() {
 		return String
-				.format("%1$010d%2$02d%3$02d%4$02d%5$02d%6$02d%7$010d",
-						nodeIds, month, day, hour, minutes, seconds, sequenceId);
+				.format("%1$010d%2$10s%3$010d",
+						nodeIds, getTimeString(), sequenceId);
 	}	
 	
 }

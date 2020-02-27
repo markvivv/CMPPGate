@@ -1,6 +1,6 @@
 package com.zx.sms.handler.cmpp;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -23,8 +23,19 @@ public class ReWriteSubmitMsgSrcHandler extends ChannelDuplexHandler {
 		
 		if(msg instanceof CmppSubmitRequestMessage){
 			CmppSubmitRequestMessage submitMsg = (CmppSubmitRequestMessage)msg;
-			if(StringUtils.isEmpty(submitMsg.getMsgsrc()))
-				submitMsg.setMsgsrc(entity.getUserName());
+			if(StringUtils.isBlank(submitMsg.getMsgsrc()))
+			{
+				if(StringUtils.isNotBlank(entity.getMsgSrc())) {
+					submitMsg.setMsgsrc(entity.getMsgSrc());
+				}else {
+					submitMsg.setMsgsrc(entity.getUserName());
+				}
+			}
+			if(StringUtils.isBlank(submitMsg.getServiceId()) && StringUtils.isNotBlank(entity.getServiceId()))
+				submitMsg.setServiceId(entity.getServiceId());
+			
+			if(StringUtils.isBlank(submitMsg.getSrcId()) && StringUtils.isNotBlank(entity.getSpCode()))
+				submitMsg.setSrcId(entity.getSpCode());
 		}
 		ctx.write(msg, promise);
 	}

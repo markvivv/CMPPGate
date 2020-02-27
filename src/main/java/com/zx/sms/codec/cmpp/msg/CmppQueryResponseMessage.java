@@ -4,7 +4,6 @@
 package com.zx.sms.codec.cmpp.msg;
 
 import com.zx.sms.codec.cmpp.packet.CmppPacketType;
-import com.zx.sms.codec.cmpp.packet.CmppQueryResponse;
 import com.zx.sms.common.GlobalConstance;
 import com.zx.sms.common.util.CachedMillisecondClock;
 
@@ -27,7 +26,7 @@ public class CmppQueryResponseMessage extends DefaultMessage {
 	private long moWT = 0;
 	private long moFL = 0;
 
-	public CmppQueryResponseMessage(long sequenceId) {
+	public CmppQueryResponseMessage(int sequenceId) {
 		super(CmppPacketType.CMPPQUERYRESPONSE, sequenceId);
 	}
 

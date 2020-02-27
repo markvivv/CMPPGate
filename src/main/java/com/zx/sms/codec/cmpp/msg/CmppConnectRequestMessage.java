@@ -1,7 +1,5 @@
 package com.zx.sms.codec.cmpp.msg;
 
-import org.apache.commons.codec.binary.Hex;
-
 import com.zx.sms.codec.cmpp.packet.CmppPacketType;
 import com.zx.sms.common.GlobalConstance;
 
@@ -86,5 +84,8 @@ public class CmppConnectRequestMessage extends DefaultMessage {
 		this.timestamp = timestamp;
 	}
 
-
+	@Override
+	public String toString() {
+		return String.format("CmppConnectRequestMessage [version=%s, sourceAddr=%s, sequenceId=%s]", version, sourceAddr, getHeader().getSequenceId());
+	}
 }

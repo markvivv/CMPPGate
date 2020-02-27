@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.zx.sms.connect.manager.cmpp.CMPPEndpointEntity;
 import com.zx.sms.connect.manager.cmpp.CMPPServerChildEndpointEntity;
 import com.zx.sms.connect.manager.cmpp.CMPPServerEndpointEntity;
+import com.zx.sms.connect.manager.smpp.SMPPServerChildEndpointEntity;
 
 public enum CMPPEndpointManager implements EndpointManagerInterface {
 	INS;
@@ -17,7 +18,6 @@ public enum CMPPEndpointManager implements EndpointManagerInterface {
 	@Override
 	public void openEndpoint(EndpointEntity entity) {
 		manager.openEndpoint(entity);
-
 	}
 
 	@Override
@@ -38,7 +38,6 @@ public enum CMPPEndpointManager implements EndpointManagerInterface {
 		// 端口按group分组，方便按省份转发处理
 		if (entity instanceof CMPPEndpointEntity) {
 			CMPPEndpointEntity cmppentity = (CMPPEndpointEntity) entity;
-			
 
 			List<CMPPEndpointEntity> list = groupMap.get(cmppentity.getGroupName());
 			if (list == null) {
@@ -47,23 +46,7 @@ public enum CMPPEndpointManager implements EndpointManagerInterface {
 				list = old == null ? list : old;
 			}
 			list.add(cmppentity);
-			
-		} else if (entity instanceof CMPPServerEndpointEntity) {
-
-			CMPPServerEndpointEntity serverentity = (CMPPServerEndpointEntity) entity;
-			for (CMPPServerChildEndpointEntity child : serverentity.getAllChild()) {
-				
-				manager.addEndpointEntity(child);
-				
-				List<CMPPEndpointEntity> list = groupMap.get(child.getGroupName());
-				if (list == null) {
-					list = new ArrayList<CMPPEndpointEntity>();
-					List<CMPPEndpointEntity> old = groupMap.putIfAbsent(child.getGroupName(), list);
-					list = old == null ? list : old;
-				}
-				list.add(child);
-			}
-		}
+		} 
 	}
 
 	@Override
@@ -87,7 +70,6 @@ public enum CMPPEndpointManager implements EndpointManagerInterface {
 	@Override
 	public void remove(String id) {
 		manager.remove(id);
-
 	}
 
 	@Override
@@ -95,7 +77,6 @@ public enum CMPPEndpointManager implements EndpointManagerInterface {
 		return manager.getEndpointEntity(id);
 	}
 	
-
 	public void addAllEndpointEntity(List<EndpointEntity> entities) {
 		if (entities == null || entities.size() == 0)
 			return;
@@ -109,4 +90,12 @@ public enum CMPPEndpointManager implements EndpointManagerInterface {
 		manager.close();
 	}
 
+	@Override
+	public void startConnectionCheckTask() {
+		manager.startConnectionCheckTask();
+	}
+	@Override
+	public void stopConnectionCheckTask() {
+		manager.stopConnectionCheckTask();
+	}
 }

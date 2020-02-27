@@ -33,16 +33,14 @@
 	
 	
 	<logger name="entity" additivity="false">
-		<level value="info" />
-		<appender-ref ref="STDOUT" />
+		<level value="debug" />
+		<appender-ref ref="SIFT" />
 	</logger>
-
 
 	<logger name="com.zx.sms" additivity="false">
 		<level value="info" />
 		<appender-ref ref="STDOUT" />
 	</logger>
-
 	
 	<root level="info">
 		<appender-ref ref="STDOUT" />

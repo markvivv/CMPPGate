@@ -34,6 +34,8 @@
  * ***** END LICENSE BLOCK ***** */
 package org.marre.sms;
 
+import com.zx.sms.common.GlobalConstance;
+
 /**
  * 
  * @author Markus Eriksson
@@ -57,11 +59,18 @@ public class SmsUserData
         dcs_ = dataCodingScheme;
     }
     
+    public SmsUserData(byte[] userData, SmsDcs dataCodingScheme)
+    {
+        data_ = userData;
+        length_ = userData.length;
+        dcs_ = dataCodingScheme;
+    }
+    
     public SmsUserData(byte[] userData)
     {
         data_ = userData;
         length_ = userData.length;
-        dcs_ = SmsDcs.getGeneralDataCodingDcs(SmsAlphabet.LATIN1, SmsMsgClass.CLASS_UNKNOWN);
+        dcs_ = GlobalConstance.defaultmsgfmt;
     }
     
     public byte[] getData()

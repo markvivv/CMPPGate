@@ -3,10 +3,9 @@ package com.zx.sms.common.util;
 import java.io.Serializable;
 
 import org.apache.commons.io.output.ByteArrayOutputStream;
-
-import de.ruedigermoeller.serialization.FSTConfiguration;
-import de.ruedigermoeller.serialization.FSTObjectInput;
-import de.ruedigermoeller.serialization.FSTObjectOutput;
+import org.nustaq.serialization.FSTConfiguration;
+import org.nustaq.serialization.FSTObjectInput;
+import org.nustaq.serialization.FSTObjectOutput;
 
 public abstract class FstObjectSerializeUtil {
 	
@@ -37,6 +36,8 @@ public abstract class FstObjectSerializeUtil {
 			}else{
 				return null;
 			}
+		}catch(Exception ex) {
+			return null;
 		}finally{
 			
 		}

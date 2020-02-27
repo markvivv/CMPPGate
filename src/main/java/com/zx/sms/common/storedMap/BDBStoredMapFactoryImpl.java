@@ -2,11 +2,12 @@ package com.zx.sms.common.storedMap;
 
 import java.io.File;
 import java.io.InputStream;
-import java.util.Map;
+import java.io.Serializable;
 import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
@@ -15,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.sleepycat.bind.EntryBinding;
-import com.sleepycat.bind.serial.SerialBinding;
 import com.sleepycat.bind.serial.StoredClassCatalog;
 import com.sleepycat.collections.StoredMap;
 import com.sleepycat.collections.StoredSortedMap;
@@ -23,82 +23,67 @@ import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
-import com.zx.sms.codec.cmpp.msg.Message;
-import com.zx.sms.common.queue.BdbQueueMap;
 import com.zx.sms.config.PropertiesUtils;
 import com.zx.sms.connect.manager.EventLoopGroupFactory;
 
-public enum BDBStoredMapFactoryImpl implements StoredMapFactory<Long, Message> {
+public enum BDBStoredMapFactoryImpl implements StoredMapFactory<Serializable, VersionObject > {
 	INS;
 	private static final Logger logger = LoggerFactory.getLogger(BDBStoredMapFactoryImpl.class);
 	private final ConcurrentHashMap<String, QueueEnvironment> envMap = new ConcurrentHashMap<String, QueueEnvironment>();
 
-	private final ConcurrentHashMap<String, StoredMap<Long, Message>> storedMaps = new ConcurrentHashMap<String, StoredMap<Long, Message>>();
-	private final ConcurrentHashMap<String, StoredSortedMap<Long, Message>> sortedstoredMap = new ConcurrentHashMap<String, StoredSortedMap<Long, Message>>();
-	private final ConcurrentHashMap<String, BlockingQueue<Message>> queueMap = new ConcurrentHashMap<String, BlockingQueue<Message>>();
+	private final ConcurrentHashMap<String, StoredMap<Serializable, VersionObject>> storedMaps = new ConcurrentHashMap<String, StoredMap<Serializable, VersionObject>>();
+	private final ConcurrentHashMap<String, StoredSortedMap<Long, Serializable>> sortedstoredMap = new ConcurrentHashMap<String, StoredSortedMap<Long, Serializable>>();
+	private final ConcurrentHashMap<String, BlockingQueue<Serializable>> queueMap = new ConcurrentHashMap<String, BlockingQueue<Serializable>>();
 
 
+	/**
+	 * VersionObject
+	 * 在保存消息对象信息时，同时保存时间戳。这样就可以区分哪些是历史信息。
+	 */
 	@Override
-	public synchronized Map<Long, Message> buildMap(String storedpath, String name) {
+	public synchronized ConcurrentMap<Serializable, VersionObject> buildMap(String storedpath, String name) {
 		QueueEnvironment env = buildBDB(storedpath);
-//		SerialBinding<Long> messageKeyBinding = new SerialBinding<Long>(env.getStoredClassCatalog(), Long.class);
-//		SerialBinding<Message> messageValueBinding = new SerialBinding<Message>(env.getStoredClassCatalog(), Message.class);
-		FstSerialBinding<Long> messageKeyBinding =  new FstSerialBinding<Long>();
-		FstSerialBinding<Message> messageValueBinding =  new FstSerialBinding<Message>();
+		FstSerialBinding<Serializable> messageKeyBinding =  new FstSerialBinding<Serializable>();
+		FstSerialBinding<VersionObject> messageValueBinding =  new FstSerialBinding<VersionObject>();
 		Database db = env.buildDatabase(name);
 
 		String keyName = new StringBuilder().append(storedpath).append(name).toString();
-		StoredMap<Long, Message> map = storedMaps.get(keyName);
+		StoredMap<Serializable, VersionObject> map = storedMaps.get(keyName);
 		if (map == null) {
-			StoredMap<Long, Message> tmpMap = new StoredMap<Long, Message>(db, messageKeyBinding, messageValueBinding, true);
-			StoredMap<Long, Message> old = storedMaps.putIfAbsent(keyName, tmpMap);
+			StoredMap<Serializable, VersionObject> tmpMap = new StoredMap<Serializable, VersionObject>(db, messageKeyBinding, messageValueBinding, true);
+			StoredMap<Serializable, VersionObject> old = storedMaps.putIfAbsent(keyName, tmpMap);
 			return old ==null ? tmpMap:old;
 		}
 		return map;
 	}
 	
-
-	@Override
-	public BlockingQueue<Message> getQueue(String storedpath, String name) {
-		String keyName = new StringBuilder().append(storedpath).append(name).toString();
-		BlockingQueue<Message> queue = queueMap.get(keyName);
-		if (queue == null) {
-			StoredSortedMap<Long, Message> sortedStoredmap = buildStoredSortedMap(storedpath, "Trans_" + name);
-			BlockingQueue<Message> newqueue = new BdbQueueMap<Message>(sortedStoredmap);
-			BlockingQueue<Message> oldqueue = queueMap.putIfAbsent(keyName, newqueue);
-			return oldqueue==null?newqueue:oldqueue;
-		}
-		return queue;
-	}
-
-	private StoredSortedMap<Long, Message> buildStoredSortedMap(String storedpath, String name) {
+	private StoredSortedMap<Long, Serializable> buildStoredSortedMap(String storedpath, String name) {
 		QueueEnvironment env = buildBDB(storedpath);
 //		SerialBinding<Long> messageKeyBinding = new SerialBinding<Long>(env.getStoredClassCatalog(), Long.class);
 //		SerialBinding<Message> messageValueBinding = new SerialBinding<Message>(env.getStoredClassCatalog(), Message.class);
 		FstSerialBinding<Long> messageKeyBinding =  new FstSerialBinding<Long>();
-		FstSerialBinding<Message> messageValueBinding =  new FstSerialBinding<Message>();
+		FstSerialBinding<Serializable> messageValueBinding =  new FstSerialBinding<Serializable>();
 		Database db = env.buildDatabase(name);
 		String keyName = new StringBuilder().append(storedpath).append(name).toString();
 
-		StoredSortedMap<Long, Message> soredMap = sortedstoredMap.get(keyName);
+		StoredSortedMap<Long, Serializable> soredMap = sortedstoredMap.get(keyName);
 
 		if (soredMap == null) {
-			soredMap = new StoredSortedMap<Long, Message>(db, (EntryBinding<Long>) messageKeyBinding, (EntryBinding<Message>) messageValueBinding, true);
+			soredMap = new StoredSortedMap<Long, Serializable>(db, (EntryBinding<Long>) messageKeyBinding, (EntryBinding<Serializable>) messageValueBinding, true);
 
-			StoredSortedMap<Long, Message> old = sortedstoredMap.putIfAbsent(keyName, soredMap);
+			StoredSortedMap<Long, Serializable> old = sortedstoredMap.putIfAbsent(keyName, soredMap);
 			return old == null ? soredMap : old;
 		}
-
 		return soredMap;
 	}
 
 	private QueueEnvironment buildBDB(String basename) {
 		String pathName;
 		basename = basename==null?"":basename;
-		if(PropertiesUtils.globalBDBBaseHome.endsWith("/")){
-			 pathName = PropertiesUtils.globalBDBBaseHome + basename;
+		if(PropertiesUtils.GLOBAL_BDB_BASE_HOME.endsWith("/")){
+			 pathName = PropertiesUtils.GLOBAL_BDB_BASE_HOME + basename;
 		}else{
-			 pathName = PropertiesUtils.globalBDBBaseHome +"/"+ basename;
+			 pathName = PropertiesUtils.GLOBAL_BDB_BASE_HOME +"/"+ basename;
 		}
 		
 		File file = new File(pathName);
@@ -116,10 +101,11 @@ public enum BDBStoredMapFactoryImpl implements StoredMapFactory<Long, Message> {
 			logger.error("file  {} is not a Directory ", pathName);
 			return null;
 		}
-		logger.info("init BDBPath : {}" ,pathName);
+		
 		QueueEnvironment env = envMap.get(pathName);
 
 		if (env == null) {
+			logger.info("init BDBPath : {}" ,pathName);
 			env = new QueueEnvironment().buildEnvironment(pathName).buildStoredClassCatalog();
 			QueueEnvironment oldenv = envMap.putIfAbsent(pathName, env);
 			return oldenv == null ? env : oldenv;

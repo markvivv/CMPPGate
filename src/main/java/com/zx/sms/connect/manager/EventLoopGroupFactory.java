@@ -8,7 +8,6 @@ import io.netty.util.concurrent.GlobalEventExecutor;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -32,12 +31,6 @@ public enum EventLoopGroupFactory {
 	};
 	private  final static EventLoopGroup bossGroup = new NioEventLoopGroup(1, newThreadFactory("bossGroup"));
 	private  final static EventLoopGroup workgroup = new NioEventLoopGroup(0, newThreadFactory("workGroup"));
-	
-	private  final static ScheduledExecutorService msgResend = new ScheduledThreadPoolExecutor(Integer.valueOf(PropertiesUtils.getproperties("GlobalMsgResendThreadCount","4")),newThreadFactory("msgResend-"),rejected);
-			//new NioEventLoopGroup(Integer.valueOf(PropertiesUtils.getproperties("GlobalMsgResendThreadCount","4")),new DefaultExecutorServiceFactory("msgResend"));
-	private  final static ScheduledExecutorService waitWindow = new ScheduledThreadPoolExecutor(Integer.valueOf(PropertiesUtils.getproperties("GlobalWaitWindowThreadCount","4")),newThreadFactory("waitWindow-"),rejected);
-			//new NioEventLoopGroup(Integer.valueOf(PropertiesUtils.getproperties("GlobalWaitWindowThreadCount","4")),new DefaultExecutorServiceFactory("waitWindow"));
-	
 	/**
 解决Netty-EventLoopGroup无法submit阻塞任务的问题。
 netty的特性：
@@ -48,13 +41,11 @@ EventLoopGroup.submit(callable)方法不能提交阻塞任务。
 如果队列中一个任务阻塞，其余的任务也无法执行。 
 	 */
 	
-	private final static ListeningScheduledExecutorService busiWork = MoreExecutors.listeningDecorator(new ScheduledThreadPoolExecutor(Integer.valueOf(PropertiesUtils.getproperties("GlobalBusiWorkThreadCount","4")),newThreadFactory("busiWork-"),rejected));
+	private final static ListeningScheduledExecutorService busiWork = MoreExecutors.listeningDecorator(new ScheduledThreadPoolExecutor(Integer.parseInt(PropertiesUtils.getProperties("GlobalBusiWorkThreadCount","4")),newThreadFactory("busiWork-"),rejected));
 	//private  final static EventLoopGroup busiWork = new ShareTaskQueueDefaultEventLoopGroup(Integer.valueOf(PropertiesUtils.getproperties("GlobalBusiWorkThreadCount","4")),new DefaultExecutorServiceFactory("busiWork"));
 	
 	public EventLoopGroup getBoss(){return bossGroup;};
 	public EventLoopGroup getWorker(){return workgroup;};
-	public ScheduledExecutorService getMsgResend(){return msgResend;};
-	public ScheduledExecutorService getWaitWindow(){return waitWindow;};
 	public ListeningScheduledExecutorService getBusiWork(){return busiWork;};
 	
 	
@@ -67,33 +58,35 @@ EventLoopGroup.submit(callable)方法不能提交阻塞任务。
 	 *@param delay
 	 *任务的执行间隔
 	 */
-	public void submitUnlimitCircleTask(Callable<?> task,ExitUnlimitCirclePolicy exitCondition,long delay){
+	public <T> void submitUnlimitCircleTask(Callable<T> task,ExitUnlimitCirclePolicy<T> exitCondition,long delay){
 		addtask(busiWork,task,exitCondition,delay);
 	}
 	
-	private void addtask(final ListeningScheduledExecutorService executor ,final Callable<?> task ,final ExitUnlimitCirclePolicy exitCondition,final long delay) {
+	private <T> void addtask(final ListeningScheduledExecutorService executor ,final Callable<T> task ,final ExitUnlimitCirclePolicy<T> exitCondition,final long delay) {
 	
 		if(executor.isShutdown()) return ;
-		final ListenableScheduledFuture<?> future = executor.schedule(task, delay, TimeUnit.MILLISECONDS);
+		final ListenableScheduledFuture<T> future = executor.schedule(task, delay, TimeUnit.MILLISECONDS);
 		future.addListener(new Runnable(){
 
 			@Override
 			public void run() {
 				
-				DefaultPromise nettyfuture = new DefaultPromise(GlobalEventExecutor.INSTANCE);
-				
+				DefaultPromise<T> nettyfuture = new DefaultPromise<T>(GlobalEventExecutor.INSTANCE);
 				try {
 					nettyfuture.setSuccess(future.get());
 				} catch (InterruptedException e) {
-					nettyfuture.setFailure(e);
+					nettyfuture.tryFailure(e);
 				} catch (ExecutionException e) {
-					nettyfuture.setFailure(e);
+					nettyfuture.tryFailure(e);
 				}catch(Exception e){
-					nettyfuture.setFailure(e);
+					nettyfuture.tryFailure(e);
 				}
-				
+				try {
 				if(exitCondition.notOver(nettyfuture))			
 					addtask(executor,task ,exitCondition,delay);
+				}catch(Exception ex) {
+					ex.printStackTrace();
+				}
 			}
 			
 		}, executor);
@@ -108,8 +101,6 @@ EventLoopGroup.submit(callable)方法不能提交阻塞任务。
 		//先停业务线程池
 		 //getBusiWork().shutdownGracefully().syncUninterruptibly();
 		 getBusiWork().shutdown();
-		 getMsgResend().shutdown();
-		 getWaitWindow().shutdown();
 		 getBoss().shutdownGracefully().syncUninterruptibly();
 		 
 		 //最后停worker

@@ -16,7 +16,26 @@ public class TCPServerEndpointEntity extends EndpointEntity implements ServerEnd
 	}
 
 	@Override
-	public  TCPServerEndpointConnector buildConnector() {
-		return new TCPServerEndpointConnector(this);
+	public void addchild(EndpointEntity entity) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void removechild(EndpointEntity entity) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public EndpointEntity getChild(String userName) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public <T extends EndpointConnector<EndpointEntity>> T buildConnector() {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }

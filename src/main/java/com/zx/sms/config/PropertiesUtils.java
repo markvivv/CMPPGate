@@ -4,49 +4,39 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 public class PropertiesUtils {
-	private static final Properties global = loadProperties("global.properties");
-	private static final Properties je = loadProperties("je.properties");
-    public static String globalBDBBaseHome = PropertiesUtils.getproperties("BDBBaseHome",System.getProperty("java.io.tmpdir"));
-	public static String getdefaultTransportCharset()
+	private static final Properties GLOBAL = loadProperties("global.properties");
+	private static final Properties JE = loadProperties("je.properties");
+	public static String GLOBAL_BDB_BASE_HOME = PropertiesUtils.getProperties("BDBBaseHome", System.getProperty("java.io.tmpdir"));
+	public static String getDefaultTransportCharset()
 	{
-		return global.getProperty("defaultTransportCharset");
+		String charset = GLOBAL.getProperty("defaultTransportCharset");
+		return charset==null?"UTF-8":charset;
 	}
 	
-	public static boolean getisSupportLongMsg()
+	public static String getProperties(String key, String defaultValue)
 	{
-		String val =  global.getProperty("supportLongMsg");
-		if(StringUtils.isBlank(val)){
-			return false;
-		}else{
-			return Boolean.valueOf(val);
-		}
-	}
-	
-	public static String getproperties(String key,String defaultValue)
-	{
-		String ret = global.getProperty(key);
+		String ret = GLOBAL.getProperty(key);
 		return  StringUtils.isBlank(ret) ? defaultValue :ret;
 	}
 	
 	public static Properties getJeProperties(){
 		Properties properties = new Properties();
-		properties.putAll(je);
+		properties.putAll(JE);
 		return properties;
 	}
 
 	private static Properties loadProperties(String resources) {
-
 		// 使用InputStream得到一个资源文件
-
 		InputStream inputstream = PropertiesUtils.class.getClassLoader().getResourceAsStream(resources);
-
 		// new 一个Properties
-
 		Properties properties = new Properties();
-
+		if(inputstream==null) {
+			return properties;
+		}
+			
 		try {
 
 			// 加载配置文件

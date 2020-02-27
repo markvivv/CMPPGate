@@ -8,6 +8,8 @@ import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.junit.Assert;
 import org.junit.Test;
 import org.marre.sms.SmsMessage;
@@ -19,7 +21,10 @@ import org.marre.wap.push.SmsWapPushMessage;
 import org.marre.wap.push.WapSIPush;
 import org.marre.wap.push.WapSLPush;
 
+import com.google.common.primitives.Bytes;
+import com.zx.sms.codec.cmpp.msg.CmppSubmitRequestMessage;
 import com.zx.sms.common.util.CMPPCommonUtil;
+import com.zx.sms.common.util.CachedMillisecondClock;
 
 public class TestSerializeSmsMessage {
 
@@ -63,4 +68,36 @@ public class TestSerializeSmsMessage {
 	        Assert.assertEquals(((SmsWapPushMessage)list.get(4)).getOrigPort_(), ((SmsWapPushMessage)result.get(4)).getOrigPort_());
 	        Assert.assertEquals(((WapSLPush)((SmsWapPushMessage)list.get(4)).getWbxml()).getUri(), ((WapSLPush)((SmsWapPushMessage)result.get(4)).getWbxml()).getUri());
 	}
+	@Test
+	public void testTerminatedMsg()throws IOException, ClassNotFoundException, InterruptedException{
+		CmppSubmitRequestMessage m = CmppSubmitRequestMessage.create("13800138000", "10086", "aaa");
+		m.setLifeTime(1);
+		  ByteArrayOutputStream bos = new ByteArrayOutputStream();     
+	        ObjectOutputStream out = new ObjectOutputStream(bos);     
+	        out.writeObject(m);
+	        byte[] b = bos.toByteArray();
+	        System.out.println(b.length);
+	        
+	        Thread.sleep(2000);
+	        
+	        ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(b));     
+	        CmppSubmitRequestMessage result = (CmppSubmitRequestMessage)in.readObject();
+	        Assert.assertArrayEquals(m.getDestterminalId(),result.getDestterminalId());
+	        Assert.assertEquals(m.getSrcId(), result.getSrcId());
+	        Assert.assertEquals(m.getTimestamp(), result.getTimestamp());
+	        
+	        Assert.assertTrue(m.isTerminated());
+	        Assert.assertTrue(result.isTerminated());
+	}
+	@Test
+	public void testLogin() {
+		String timestamp = DateFormatUtils.format(CachedMillisecondClock.INS.now(), "MMddHHmmss");
+		byte[] userBytes = "GSDT01".getBytes();
+		byte[] passwdBytes = "1234567".getBytes();
+		byte[] timestampBytes = "1204110405".getBytes();
+//		System.out.println(timestamp);
+		System.out.println(DigestUtils.md5Hex(Bytes.concat(userBytes, new byte[9], passwdBytes, timestampBytes)));
+	
+	}
+	
 }

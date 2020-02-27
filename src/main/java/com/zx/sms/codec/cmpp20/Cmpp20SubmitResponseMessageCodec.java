@@ -19,6 +19,7 @@ import com.zx.sms.codec.cmpp20.packet.Cmpp20PacketType;
 import com.zx.sms.codec.cmpp20.packet.Cmpp20SubmitResponse;
 import com.zx.sms.common.util.DefaultMsgIdUtil;
 
+import static com.zx.sms.common.util.NettyByteBufUtil.*;
 /**
  * shifei(shifei@asiainfo.com)
  */
@@ -38,36 +39,34 @@ public class Cmpp20SubmitResponseMessageCodec extends MessageToMessageCodec<Mess
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, Message msg, List<Object> out) throws Exception {
-		long commandId = ((Long) msg.getHeader().getCommandId()).longValue();
+		int commandId =  msg.getHeader().getCommandId();
 		if (packetType.getCommandId() != commandId) {
 			// 不解析，交给下一个codec
 			out.add(msg);
 			return;
 		}
-		out.add(decode(msg));
+		CmppSubmitResponseMessage responseMessage = new CmppSubmitResponseMessage(msg.getHeader());
+
+		ByteBuf bodyBuffer =Unpooled.wrappedBuffer(msg.getBodyBuffer());
+
+		responseMessage.setMsgId(DefaultMsgIdUtil.bytes2MsgId(toArray(bodyBuffer,Cmpp20SubmitResponse.MSGID.getLength())));
+		responseMessage.setResult(bodyBuffer.readUnsignedByte());
+		ReferenceCountUtil.release(bodyBuffer);
+		out.add(responseMessage);
 	}
 
 	@Override
 	protected void encode(ChannelHandlerContext ctx, CmppSubmitResponseMessage msg, List<Object> out) throws Exception {
-		ByteBuf bodyBuffer = Unpooled.buffer(Cmpp20SubmitResponse.RESULT.getBodyLength());
+		ByteBuf bodyBuffer = ctx.alloc().buffer(Cmpp20SubmitResponse.RESULT.getBodyLength());
 
 		bodyBuffer.writeBytes(DefaultMsgIdUtil.msgId2Bytes(msg.getMsgId()));
 		bodyBuffer.writeByte((int) msg.getResult());
-		msg.setBodyBuffer(bodyBuffer.array());
+		msg.setBodyBuffer(toArray(bodyBuffer,bodyBuffer.readableBytes()));
 		msg.getHeader().setBodyLength(msg.getBodyBuffer().length);
 		ReferenceCountUtil.release(bodyBuffer);
 		out.add(msg);
 	}
 	
-	public static CmppSubmitResponseMessage decode(Message msg){
-		CmppSubmitResponseMessage responseMessage = new CmppSubmitResponseMessage(msg.getHeader());
 
-		ByteBuf bodyBuffer =Unpooled.wrappedBuffer(msg.getBodyBuffer());
-
-		responseMessage.setMsgId(DefaultMsgIdUtil.bytes2MsgId(bodyBuffer.readBytes(Cmpp20SubmitResponse.MSGID.getLength()).array()));
-		responseMessage.setResult(bodyBuffer.readUnsignedByte());
-		ReferenceCountUtil.release(bodyBuffer);
-		return responseMessage;
-	}
 
 }

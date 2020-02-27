@@ -28,7 +28,6 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 	public void testCodec() {
 
 		CmppDeliverRequestMessage msg = createTestReq("ad3 中");
-
 		test0(msg);
 	}
 
@@ -41,7 +40,6 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 		reportRequestMessage.setDestterminalId("13800138000");
 		reportRequestMessage.setStat("9876");
 		msg.setReportRequestMessage(reportRequestMessage);
-		msg.setRegisteredDelivery((short) 1);
 
 		test0(msg);
 
@@ -55,9 +53,9 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 
 		int length = buf.readableBytes();
 		
-		Assert.assertEquals(length, buf.readUnsignedInt());
-		Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
-		Assert.assertEquals(msg.getHeader().getSequenceId(), buf.readUnsignedInt());
+		Assert.assertEquals(length, buf.readInt());
+		Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
+		Assert.assertEquals(msg.getHeader().getSequenceId(), buf.readInt());
 
 
 		CmppDeliverRequestMessage result = decode(newbuf);
@@ -83,11 +81,10 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 		// 70个汉字
 		msg.setMsgContent(content);
 		msg.setMsgId(new MsgId());
-		msg.setRegisteredDelivery((short) 0);
 		msg.setServiceid("10086");
 		msg.setSrcterminalId("13800138000");
 		msg.setSrcterminalType((short) 1);
-		header.setSequenceId(System.nanoTime() & 0x7fffffff);
+		header.setSequenceId((int)System.nanoTime());
 		return msg;
 	}
 	
@@ -100,7 +97,6 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 	{
 		CmppDeliverRequestMessage msg = createTestReq(content);
 		
-		msg.setSupportLongMsg(false);
 		channel().writeOutbound(msg);
 		ByteBuf buf =(ByteBuf)channel().readOutbound();
 		ByteBuf copybuf = Unpooled.buffer();
@@ -110,8 +106,8 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 	    	copybuf.writeBytes(buf.copy());
 			int length = buf.readableBytes();
 			
-			Assert.assertEquals(length, buf.readUnsignedInt());
-			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
+			Assert.assertEquals(length, buf.readInt());
+			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
 			
 
 			buf =(ByteBuf)channel().readOutbound();
@@ -132,7 +128,6 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 	{
 		CmppDeliverRequestMessage msg = createTestReq(content);
 		
-		msg.setSupportLongMsg(true);
 		channel().writeOutbound(msg);
 		ByteBuf buf =(ByteBuf)channel().readOutbound();
 		ByteBuf copybuf = Unpooled.buffer();
@@ -142,8 +137,8 @@ public class TestCmpp20DeliverRequestMessageCodec extends AbstractTestMessageCod
 	    	copybuf.writeBytes(buf.copy());
 			int length = buf.readableBytes();
 			
-			Assert.assertEquals(length, buf.readUnsignedInt());
-			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
+			Assert.assertEquals(length, buf.readInt());
+			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
 			
 
 			buf =(ByteBuf)channel().readOutbound();

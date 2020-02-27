@@ -3,6 +3,7 @@ package com.zx.sms.codec.cmpp;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import com.zx.sms.codec.AbstractTestMessageCodec;
@@ -20,18 +21,20 @@ public class Test10085MsgDataSubmitRequestDecoder extends AbstractTestMessageCod
 		ByteBuf buf = Unpooled.wrappedBuffer(prepareMsgData());
 		ch.writeInbound(buf);
 		CmppSubmitRequestMessage result = null;
+		boolean success = false;
 		while(null!= ( result =  (CmppSubmitRequestMessage)ch.readInbound())){
 			
+			Assert.assertNotNull(result);
 			System.out.println(result);
-			result.setSupportLongMsg(true);
 			ch.writeOutbound(result);
+			success = true;
 		}
-		
-		
+		Assert.assertTrue(success);
 		ByteBuf bufread;
 		while(( bufread = (ByteBuf)ch.readOutbound())!=null){
 			bufread.release();
 		}
+		
 	}
 	
 	//下面数据截取自现网10085的报文。cmppSubmit2.0协议

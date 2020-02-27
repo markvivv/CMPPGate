@@ -4,15 +4,16 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
+
+import java.util.concurrent.ConcurrentMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ import com.zx.sms.connect.manager.AbstractEndpointConnector;
 import com.zx.sms.connect.manager.EndpointEntity;
 import com.zx.sms.connect.manager.EventLoopGroupFactory;
 import com.zx.sms.connect.manager.ServerEndpoint;
+import com.zx.sms.session.AbstractSessionStateManager;
 
 public class TCPClientEndpointConnector extends AbstractEndpointConnector  {
 	private static final Logger logger = LoggerFactory.getLogger(TCPClientEndpointConnector.class);
@@ -55,26 +57,13 @@ public class TCPClientEndpointConnector extends AbstractEndpointConnector  {
 		}
 		return future;
 	}
-
-
-
-	public ChannelInitializer<SocketChannel> initPipeLine() {
-
-		return new ChannelInitializer<SocketChannel>() {
-
-			@Override
-			protected void initChannel(SocketChannel ch) throws Exception {
-				ChannelPipeline pipeline = ch.pipeline();
-				 pipeline.addLast("clientLog", new LoggingHandler(LogLevel.DEBUG));
-				 pipeline.addLast("Echo",  new TCPServerEchoHandler());
-			}
-		};
-	}
-
 	@Override
 	protected SslContext createSslCtx() {
 		try{
-			return SslContext.newClientContext(InsecureTrustManagerFactory.INSTANCE);
+			if(getEndpointEntity().isUseSSL())
+				return SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
+			else 
+				return null;
 		}catch(Exception ex){
 			return null;
 		}
@@ -88,5 +77,24 @@ public class TCPClientEndpointConnector extends AbstractEndpointConnector  {
 				pipeline.addLast(getSslCtx().newHandler(ch.alloc()));
 			}
 		}
+	}
+
+
+	@Override
+	protected void doBindHandler(ChannelPipeline pipe, EndpointEntity entity) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	protected void doinitPipeLine(ChannelPipeline pipeline) {
+		 pipeline.addLast("clientLog", new LoggingHandler(LogLevel.DEBUG));
+		 pipeline.addLast("Echo",  new TCPServerEchoHandler());
+	}
+
+	@Override
+	protected AbstractSessionStateManager createSessionManager(EndpointEntity entity, ConcurrentMap storeMap, boolean preSend) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }

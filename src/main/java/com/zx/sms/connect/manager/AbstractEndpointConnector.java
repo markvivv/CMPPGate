@@ -1,45 +1,47 @@
 package com.zx.sms.connect.manager;
 
+import java.io.Serializable;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.zx.sms.BaseMessage;
+import com.zx.sms.common.GlobalConstance;
+import com.zx.sms.common.NotSupportedException;
+import com.zx.sms.common.storedMap.BDBStoredMapFactoryImpl;
+import com.zx.sms.common.storedMap.VersionObject;
+import com.zx.sms.common.util.DefaultSequenceNumberUtil;
+import com.zx.sms.connect.manager.cmpp.CMPPServerEndpointEntity;
+import com.zx.sms.handler.MessageLogHandler;
+import com.zx.sms.handler.api.AbstractBusinessHandler;
+import com.zx.sms.handler.api.BusinessHandlerInterface;
+import com.zx.sms.session.AbstractSessionStateManager;
+import com.zx.sms.session.cmpp.SessionState;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufHolder;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.proxy.HttpProxyHandler;
+import io.netty.handler.proxy.Socks4ProxyHandler;
+import io.netty.handler.proxy.Socks5ProxyHandler;
 import io.netty.handler.ssl.SslContext;
-import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.handler.traffic.ChannelTrafficShapingHandler;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.zx.sms.codec.cmpp.msg.Message;
-import com.zx.sms.codec.cmpp.packet.CmppPacketType;
-import com.zx.sms.common.GlobalConstance;
-import com.zx.sms.common.storedMap.BDBStoredMapFactoryImpl;
-import com.zx.sms.common.util.DefaultSequenceNumberUtil;
-import com.zx.sms.connect.manager.cmpp.CMPPCodecChannelInitializer;
-import com.zx.sms.connect.manager.cmpp.CMPPEndpointEntity;
-import com.zx.sms.connect.manager.cmpp.CMPPServerChildEndpointEntity;
-import com.zx.sms.handler.api.AbstractBusinessHandler;
-import com.zx.sms.handler.api.BusinessHandlerInterface;
-import com.zx.sms.handler.cmpp.CMPPMessageLogHandler;
-import com.zx.sms.handler.cmpp.ReWriteSubmitMsgSrcHandler;
-import com.zx.sms.session.cmpp.SessionLoginManager;
-import com.zx.sms.session.cmpp.SessionState;
-import com.zx.sms.session.cmpp.SessionStateManager;
+import io.netty.util.concurrent.Promise;
 
 /**
  * @author Lihuanghe(18852780@qq.com)
@@ -56,7 +58,9 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 	private EndpointEntity endpoint;
 
 	private CircularList channels = new CircularList();
-
+	
+	private final static String sessionHandler = "sessionStateManager";
+	
 	public AbstractEndpointConnector(EndpointEntity endpoint) {
 		this.endpoint = endpoint;
 		this.sslCtx = createSslCtx();
@@ -85,10 +89,11 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 
 	@Override
 	public void close() throws Exception {
-		Channel ch = channels.fetch();
-		while (ch != null) {
+		Channel[] chs = channels.getall();
+		if(chs == null || chs.length == 0)
+			return;
+		for(Channel ch : chs){
 			close(ch);
-			ch = channels.fetch();
 		}
 	}
 
@@ -126,103 +131,147 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 		return channels;
 	}
 
-	public void addChannel(Channel ch) {
-		EndpointEntity endpoint = getEndpointEntity();
-		// 标识连接已建立
-		ch.attr(GlobalConstance.attributeKey).set(SessionState.Connect);
-		getChannels().add(ch);
-		int cnt = incrementConn();
-		// 如果是CMPP端口
-		if (endpoint instanceof CMPPEndpointEntity) {
-			CMPPEndpointEntity cmppentity = (CMPPEndpointEntity)endpoint;
-			Map<Long, Message> storedMap = null;
-			if( cmppentity.isReSendFailMsg()){
-				// 如果上次发送失败的消息要重发一次，则要创建持久化Map用于存储发送的message
-				 storedMap = BDBStoredMapFactoryImpl.INS.buildMap(endpoint.getId(), "Session_" +endpoint.getId());
+	protected abstract AbstractSessionStateManager createSessionManager(EndpointEntity entity, ConcurrentMap storeMap,boolean presend);
+
+	protected abstract void doBindHandler(ChannelPipeline pipe, EndpointEntity entity);
+
+	protected abstract void doinitPipeLine(ChannelPipeline pipeline);
+	
+	
+	protected void addProxyHandler(Channel ch,URI proxy) throws NotSupportedException{
+		if(proxy==null) return;
+		String scheme = proxy.getScheme();
+		String userinfo = proxy.getUserInfo();
+		String host = proxy.getHost();
+		int port = proxy.getPort();
+		String username = null;
+		String pass = null;
+		
+		
+		if(userinfo!=null && (!"".equals(userinfo))){
+			int idx = userinfo.indexOf(":");
+			if(idx>0){
+				username = userinfo.substring(0, idx);
+				pass =userinfo.substring(idx+1);
+			}
+		}
+		
+		ChannelPipeline pipeline = ch.pipeline();
+		
+		if("HTTP".equalsIgnoreCase(scheme)){
+			if(username==null){
+				pipeline.addLast(new HttpProxyHandler(new InetSocketAddress(host,port)));
 			}else{
-				 storedMap = new HashMap<Long, Message>();
+				pipeline.addLast(new HttpProxyHandler(new InetSocketAddress(host,port),username,pass));
 			}
-			
-			Map<Long, Message> preSendMap = new HashMap<Long, Message>();
-
-			logger.debug("Channel added To Endpoint {} .totalCnt:{} ,remoteAddress: {}", endpoint, cnt, ch.remoteAddress());
-			if (cnt == 1 && cmppentity.isReSendFailMsg()) {
-				// 如果是第一个连接。要把上次发送失败的消息取出，再次发送一次
-
-				if (storedMap != null && storedMap.size() > 0) {
-					try {
-						for (Map.Entry<Long, Message> entry : storedMap.entrySet()) {
-							Message msg = entry.getValue();
-							//不能重发Term消息。
-							//如果上次连接关闭时Term消息未收到响应，重发会导致本次连接关闭
-							if(msg.getHeader().getCommandId()!= CmppPacketType.CMPPTERMINATEREQUEST.getCommandId()&&
-									msg.getHeader().getCommandId()!= CmppPacketType.CMPPTERMINATERESPONSE.getCommandId())
-							{
-								preSendMap.put(entry.getKey(), entry.getValue());
-							}else{
-								logger.warn("last CMPPTERMINATE msg may not success.");
-							}
-							
-						}
-					} catch (Exception e) {
-						logger.warn("get storedMessage err ", e);
-					}finally{
-						//删除所有积压的消息
-						storedMap.clear();
-					}
-				}
+		}else if("SOCKS5".equalsIgnoreCase(scheme)){
+			if(username==null){
+				pipeline.addLast(new Socks5ProxyHandler(new InetSocketAddress(host,port)));
+			}else{
+				pipeline.addLast(new Socks5ProxyHandler(new InetSocketAddress(host,port),username,pass));
 			}
-			
-
-			// 增加流量整形 ，每个连接每秒发送，接收消息数不超过配置的值
-			// 这个放在前边，保证真实发送到连接上的速率。可以避免网关抖动造成的发送超速。
-			// 网关抖动时，网关会先积压大量response，然后突然发送大量response给SessionManager,
-			// 造成在Session里等待的消息集中发送,因此造成超速。
-			ch.pipeline().addBefore(CMPPCodecChannelInitializer.codecName, "CMPPChannelTrafficBefore",
-					new CMPPChannelTrafficShapingHandler(cmppentity.getWriteLimit(), cmppentity.getReadLimit(), 250));
-
-			// 将SessinManager放在messageHeaderCodec后边。因为要处理Submit 和
-			// deliver消息的长短信分拆
-			ch.pipeline().addBefore(CMPPCodecChannelInitializer.codecName, "sessionStateManager", new SessionStateManager(cmppentity, storedMap, preSendMap));
-
-			// 这个放在后边，限制发送方的速度，超速后设置连接不可写
-			ch.pipeline().addBefore(CMPPCodecChannelInitializer.codecName, "CMPPChannelTrafficAfter",
-					new CMPPChannelTrafficShapingHandler(cmppentity.getWriteLimit(), cmppentity.getReadLimit(), 250));
-			// 加载业务handler
-			bindHandler(ch.pipeline(), cmppentity);
+		}else if("SOCKS4".equalsIgnoreCase(scheme)){
+			if(username==null){
+				pipeline.addLast(new Socks4ProxyHandler(new InetSocketAddress(host,port)));
+			}else{
+				pipeline.addLast(new Socks4ProxyHandler(new InetSocketAddress(host,port),username));
+			}
+		}else {
+			throw new NotSupportedException("not support proxy protocol "+ scheme);
 		}
 	}
 
+	protected ChannelInitializer<?> initPipeLine() {
+
+		return new ChannelInitializer<Channel>() {
+
+			@Override
+			protected void initChannel(Channel ch) throws Exception {
+				ChannelPipeline pipeline = ch.pipeline();
+				EndpointEntity entity = getEndpointEntity();
+//				pipeline.addFirst(new LoggingHandler("proxy", LogLevel.INFO));
+				if(entity instanceof ClientEndpoint && StringUtils.isNotBlank(entity.getProxy())){
+					String uriString = entity.getProxy();
+					try{
+						URI uri = URI.create(uriString);
+						addProxyHandler(ch,uri);
+					}catch(Exception ex){
+						logger.error("parse Proxy URI {} failed.",uriString ,ex);
+					}
+				}
+
+				if (entity.isUseSSL() && getSslCtx() != null) {
+					initSslCtx(ch, entity);
+				}
+				doinitPipeLine(pipeline);
+			}
+		};
+	};
+
+	public synchronized boolean addChannel(Channel ch) {
+		int nowConnCnt = getConnectionNum();
+		EndpointEntity endpoint = getEndpointEntity();
+		if(endpoint.getMaxChannels()==0 || endpoint.getMaxChannels()> nowConnCnt) {
+			// 标识连接已建立
+			ch.attr(GlobalConstance.attributeKey).set(SessionState.Connect);
+			
+			getChannels().add(ch);
+			int cnt = incrementConn();
+			
+			ConcurrentMap<Serializable, VersionObject> storedMap = null;
+			if (endpoint.isReSendFailMsg()) {
+				// 如果上次发送失败的消息要重发一次，则要创建持久化Map用于存储发送的message
+				storedMap = BDBStoredMapFactoryImpl.INS.buildMap(endpoint.getId(), "Session_" + endpoint.getId());
+			} else {
+				storedMap = new ConcurrentHashMap();
+			}
+
+			logger.info("Channel added To Endpoint {} .totalCnt:{} ,remoteAddress: {}", endpoint, cnt, ch.remoteAddress());
+
+			if (cnt == 1 && endpoint.isReSendFailMsg()) {
+				// 如果是第一个连接。要把上次发送失败的消息取出，再次发送一次
+				ch.pipeline().addAfter(GlobalConstance.codecName, sessionHandler,createSessionManager(endpoint, storedMap, true) );
+			}else{
+				ch.pipeline().addAfter(GlobalConstance.codecName, sessionHandler, createSessionManager(endpoint, storedMap, false) );
+			}
+			
+			// 增加流量整形 ，每个连接每秒发送，接收消息数不超过配置的值
+			ch.pipeline().addAfter(GlobalConstance.codecName, "ChannelTrafficAfter",
+					new MessageChannelTrafficShapingHandler(endpoint.getWriteLimit(), endpoint.getReadLimit(), 250));
+			
+			bindHandler(ch.pipeline(), getEndpointEntity());
+			return true;
+		}else {
+			logger.warn("allowed max channel count: {} ,deny to login.{}",endpoint.getMaxChannels(),endpoint);
+
+			return false;
+		}
+		
+	}
+
 	public void removeChannel(Channel ch) {
-		ch.attr(GlobalConstance.attributeKey).set(SessionState.DisConnect);
-		if (getChannels().remove(ch))
+		
+		if (getChannels().remove(ch)){
+			ch.attr(GlobalConstance.attributeKey).set(SessionState.DisConnect);
 			decrementConn();
+		}
 	}
 
 	/**
 	 * 连接建立成功后要加载的channelHandler
 	 */
-	protected void bindHandler(ChannelPipeline pipe, CMPPEndpointEntity entity) {
-		// 修改连接空闲时间,使用server.xml里配置的连接空闲时间生效
-		if (entity instanceof CMPPServerChildEndpointEntity) {
-			ChannelHandler handler = pipe.get(GlobalConstance.IdleCheckerHandlerName);
-			if (handler != null) {
-				pipe.replace(handler, GlobalConstance.IdleCheckerHandlerName, new IdleStateHandler(0, 0, entity.getIdleTimeSec(), TimeUnit.SECONDS));
-			}
-		}
+	protected void bindHandler(ChannelPipeline pipe, EndpointEntity entity) {
 
+		if(entity instanceof CMPPServerEndpointEntity){
+			return;
+		}
 		pipe.addFirst("socketLog", new LoggingHandler(String.format(GlobalConstance.loggerNamePrefix, entity.getId()), LogLevel.TRACE));
-		pipe.addLast("msgLog", new CMPPMessageLogHandler(entity));
-
-		if (entity instanceof ClientEndpoint) {
-			pipe.addLast("reWriteSubmitMsgSrcHandler", new ReWriteSubmitMsgSrcHandler(entity));
-		}
-
-		pipe.addLast("CmppActiveTestRequestMessageHandler", GlobalConstance.activeTestHandler);
-		pipe.addLast("CmppActiveTestResponseMessageHandler", GlobalConstance.activeTestRespHandler);
-		pipe.addLast("CmppTerminateRequestMessageHandler", GlobalConstance.terminateHandler);
-		pipe.addLast("CmppTerminateResponseMessageHandler", GlobalConstance.terminateRespHandler);
-
+		
+		// 调用子类的bind方法
+		doBindHandler(pipe, entity);
+		
+		pipe.addAfter(GlobalConstance.codecName,"msgLog", new MessageLogHandler(entity));
+		
 		List<BusinessHandlerInterface> handlers = entity.getBusinessHandlerSet();
 		if (handlers != null && handlers.size() > 0) {
 			for (BusinessHandlerInterface handler : handlers) {
@@ -255,38 +304,21 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 	}
 
 	protected abstract void initSslCtx(Channel ch, EndpointEntity entity);
-
-	protected ChannelInitializer<?> initPipeLine() {
-		return new ChannelInitializer<Channel>() {
-
-			@Override
-			protected void initChannel(Channel ch) throws Exception {
-				ChannelPipeline pipeline = ch.pipeline();
-
-				if (getSslCtx() != null && getEndpointEntity().isUseSSL()) {
-					initSslCtx(ch, getEndpointEntity());
-				}
-
-				CMPPCodecChannelInitializer codec = null;
-				if (getEndpointEntity() instanceof CMPPEndpointEntity) {
-					pipeline.addLast(GlobalConstance.IdleCheckerHandlerName,
-							new IdleStateHandler(0, 0, ((CMPPEndpointEntity) getEndpointEntity()).getIdleTimeSec(), TimeUnit.SECONDS));
-					codec = new CMPPCodecChannelInitializer(((CMPPEndpointEntity) getEndpointEntity()).getVersion());
-
-				} else {
-					pipeline.addLast(GlobalConstance.IdleCheckerHandlerName, new IdleStateHandler(0, 0, 30, TimeUnit.SECONDS));
-					codec = new CMPPCodecChannelInitializer();
-				}
-
-				pipeline.addLast("CmppServerIdleStateHandler", GlobalConstance.idleHandler);
-				pipeline.addLast(codec.pipeName(), codec);
-
-				pipeline.addLast("sessionLoginManager", new SessionLoginManager(getEndpointEntity()));
+	
+	protected long doCalculateSize(Object msg){
+		if(msg instanceof BaseMessage){
+			BaseMessage req = (BaseMessage)msg;
+			if(req.isRequest()){
+				return 1;
+			}else{
+				return 0;
 			}
-		};
+		}else{
+			return -1L;
+		}
 	}
 	
-	public Channel[] getallChannel(){
+	public Channel[] getallChannel() {
 		return channels.getall();
 	}
 
@@ -294,27 +326,24 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 	 * 循环列表，用于实现轮循算法
 	 */
 	private class CircularList {
-		private ReadWriteLock lock = new ReentrantReadWriteLock();
-		private List<Channel> collection = new ArrayList<Channel>();
-		
-		public Channel[] getall(){
-			return collection.toArray(new Channel[0]);
+		private List<Channel> collection = Collections.synchronizedList( new ArrayList<Channel>(20)); 
+
+		public Channel[] getall() {
+			return collection.toArray(new Channel[collection.size()]);
 		}
 
 		public Channel fetch() {
 
 			try {
-				lock.readLock().lock();
-				int size = collection.size();
+				int size = getConnectionNum();
 				if (size == 0)
 					return null;
 
-				int idx = (int) DefaultSequenceNumberUtil.getNextAtomicValue(indexSeq, Limited);
+				int idx = indexSeq.incrementAndGet();
 				Channel ret = collection.get(idx % size);
 				// 超过65535归0
 				return ret;
 			} finally {
-				lock.readLock().unlock();
 			}
 		}
 
@@ -322,10 +351,8 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 
 			boolean r = false;
 			try {
-				lock.writeLock().lock();
 				r = collection.add(ele);
 			} finally {
-				lock.writeLock().unlock();
 			}
 			return r;
 		}
@@ -334,34 +361,22 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 
 			boolean r = false;
 			try {
-				lock.writeLock().lock();
 				r = collection.remove(ele);
 			} finally {
-				lock.writeLock().unlock();
 			}
 			return r;
 		}
 
 		private final static long Limited = 65535L;
-		private AtomicLong indexSeq = new AtomicLong();
+		private AtomicInteger indexSeq = new AtomicInteger();
 	}
-
-	/**
-	 * 重写了calculateSize方法，按消息条数计算流量
-	 *
-	 **/
-
-	private class CMPPChannelTrafficShapingHandler extends ChannelTrafficShapingHandler {
-		public CMPPChannelTrafficShapingHandler(long writeLimit, long readLimit, long checkInterval) {
+	
+	private class MessageChannelTrafficShapingHandler extends ChannelTrafficShapingHandler {
+		public MessageChannelTrafficShapingHandler(long writeLimit, long readLimit, long checkInterval) {
 			super(writeLimit, readLimit, checkInterval);
 			// 积压75条,或者延迟超过2.5s就不能再写了
 			setMaxWriteSize(75);
 			setMaxWriteDelay(2500);
-		}
-
-		private boolean isRequestMsg(Message msg) {
-			long commandId = msg.getHeader().getCommandId();
-			return (commandId & 0x80000000L) == 0L;
 		}
 
 		@Override
@@ -372,14 +387,47 @@ public abstract class AbstractEndpointConnector implements EndpointConnector<End
 			if (msg instanceof ByteBufHolder) {
 				return ((ByteBufHolder) msg).content().readableBytes();
 			}
-			if (msg instanceof Message) {
-				// 只计算Request信息
-				if (isRequestMsg((Message) msg)) {
-					return 1;
-				}
-			}
-			return -1;
+			return doCalculateSize(msg);
 		}
+	}
+	
+	public ChannelFuture asynwrite(Object msg){
+		Channel ch = fetchOneWritable();
+		if(ch == null) return null;
+		ChannelFuture future = ch.writeAndFlush(msg);
+		return future;
+	}
+		
+	public <T extends BaseMessage> List<Promise<T>> synwrite(List<T> msgs){
+		Channel ch = fetchOneWritable();
+		if(ch == null) return null;
+		AbstractSessionStateManager session = (AbstractSessionStateManager)ch.pipeline().get(sessionHandler);
+		if(session == null) return null;
+		List<Promise<T>> arrPromise = new ArrayList<Promise<T>>();
+		for (BaseMessage msg : msgs) {
+			arrPromise.add(session.writeMessagesync( msg));
+		}
+		
+		return arrPromise;
+	}
+	
+	public <T extends BaseMessage> Promise<T> synwrite(T message){
+		Channel ch = fetchOneWritable();
+		if(ch == null) return null;
+		AbstractSessionStateManager session = (AbstractSessionStateManager)ch.pipeline().get(sessionHandler);
+		return session.writeMessagesync( message);
+	}
+	
+	private Channel fetchOneWritable(){
+		Channel ch = fetch();
+		// 端口上还没有可用连接
+		if (ch == null)
+			return null;
+
+		if (ch.isActive() && ch.isWritable()) {
+			return ch;
+		}
+		return null;
 	}
 
 }

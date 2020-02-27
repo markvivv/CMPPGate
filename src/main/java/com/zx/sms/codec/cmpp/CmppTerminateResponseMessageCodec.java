@@ -3,11 +3,10 @@
  */
 package com.zx.sms.codec.cmpp;
 
-import java.util.List;
-
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageCodec;
+
+import java.util.List;
 
 import com.zx.sms.codec.cmpp.msg.CmppTerminateResponseMessage;
 import com.zx.sms.codec.cmpp.msg.Message;
@@ -33,7 +32,7 @@ public class CmppTerminateResponseMessageCodec extends MessageToMessageCodec<Mes
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, Message msg, List<Object> out) throws Exception {
-        long commandId = ((Long) msg.getHeader().getCommandId()).longValue();
+		int commandId =  msg.getHeader().getCommandId();
         if(packetType.getCommandId() != commandId) {
 			//不解析，交给下一个codec
 			out.add(msg);

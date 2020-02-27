@@ -3,6 +3,7 @@
  */
 package com.zx.sms.codec.cmpp;
 
+import static com.zx.sms.common.util.NettyByteBufUtil.toArray;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -17,7 +18,6 @@ import com.zx.sms.codec.cmpp.packet.CmppDeliverResponse;
 import com.zx.sms.codec.cmpp.packet.CmppPacketType;
 import com.zx.sms.codec.cmpp.packet.PacketType;
 import com.zx.sms.common.util.DefaultMsgIdUtil;
-
 /**
  * @author huzorro(huzorro@gmail.com)
  *
@@ -38,35 +38,30 @@ public class CmppDeliverResponseMessageCodec extends MessageToMessageCodec<Messa
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, Message msg, List<Object> out) throws Exception {
-		long commandId = ((Long) msg.getHeader().getCommandId()).longValue();
+		int commandId = msg.getHeader().getCommandId();
 		if (packetType.getCommandId() != commandId) {
 			// 不解析，交给下一个codec
 			out.add(msg);
 			return;
 		}
-		CmppDeliverResponseMessage responseMessage = decode(msg);
-		out.add(responseMessage);
-	}
-	
-	public static CmppDeliverResponseMessage decode(Message msg){
 		CmppDeliverResponseMessage responseMessage = new CmppDeliverResponseMessage(msg.getHeader());
 
 		ByteBuf bodyBuffer = Unpooled.wrappedBuffer(msg.getBodyBuffer());
 
-		responseMessage.setMsgId(DefaultMsgIdUtil.bytes2MsgId(bodyBuffer.readBytes(CmppDeliverResponse.MSGID.getLength()).array()));
+		responseMessage.setMsgId(DefaultMsgIdUtil.bytes2MsgId(toArray(bodyBuffer,CmppDeliverResponse.MSGID.getLength())));
 		responseMessage.setResult(bodyBuffer.readUnsignedInt());
 		ReferenceCountUtil.release(bodyBuffer);
-		return responseMessage;
+		out.add(responseMessage);
 	}
 
 	@Override
 	protected void encode(ChannelHandlerContext ctx, CmppDeliverResponseMessage msg, List<Object> out) throws Exception {
 
-		ByteBuf bodyBuffer = Unpooled.buffer(CmppDeliverResponse.MSGID.getBodyLength());
+		ByteBuf bodyBuffer = ctx.alloc().buffer(CmppDeliverResponse.MSGID.getBodyLength());
 		bodyBuffer.writeBytes(DefaultMsgIdUtil.msgId2Bytes(msg.getMsgId()));
 		bodyBuffer.writeInt((int) msg.getResult());
 
-		msg.setBodyBuffer(bodyBuffer.array());
+		msg.setBodyBuffer(toArray(bodyBuffer,bodyBuffer.readableBytes()));
 		msg.getHeader().setBodyLength(msg.getBodyBuffer().length);
 		ReferenceCountUtil.release(bodyBuffer);
 		out.add(msg);

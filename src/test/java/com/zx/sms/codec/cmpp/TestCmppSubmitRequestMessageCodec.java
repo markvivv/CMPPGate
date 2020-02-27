@@ -38,9 +38,9 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 		
 		int length = buf.readableBytes();
 		
-		Assert.assertEquals(length, buf.readUnsignedInt());
-		Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
-		Assert.assertEquals(msg.getHeader().getSequenceId(), buf.readUnsignedInt());
+		Assert.assertEquals(length, buf.readInt());
+		Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
+		Assert.assertEquals(msg.getHeader().getSequenceId(), buf.readInt());
 		
 	
 		
@@ -75,7 +75,7 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 		SmsMessage wap = new SmsWapPushMessage(sl);
 		msg.setMsgContent(wap);
 		CmppSubmitRequestMessage result = testWapCodec(msg);
-		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getMsg();
+		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getSmsMessage();
 		WapSLPush actsl = (WapSLPush)smsmsg.getWbxml();
 		Assert.assertEquals(sl.getUri(), actsl.getUri());
 	}
@@ -88,7 +88,7 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 		SmsMessage wap = new SmsWapPushMessage(si);
 		msg.setMsgContent(wap);
 		CmppSubmitRequestMessage result = testWapCodec(msg);
-		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getMsg();
+		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getSmsMessage();
 		WapSIPush actsi = (WapSIPush)smsmsg.getWbxml();
 		Assert.assertEquals(si.getUri(), actsi.getUri());
 		Assert.assertEquals(si.getMessage(), actsi.getMessage());
@@ -101,7 +101,7 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 		SmsPortAddressedTextMessage textMsg =new SmsPortAddressedTextMessage(new SmsPort(rnd_.nextInt() &0xffff,"")  ,new SmsPort(rnd_.nextInt()&0xffff,""),"这是一条端口文本短信");
 		msg.setMsgContent(textMsg);
 		CmppSubmitRequestMessage result =testWapCodec(msg);
-		SmsPortAddressedTextMessage smsmsg = (SmsPortAddressedTextMessage)result.getMsg();
+		SmsPortAddressedTextMessage smsmsg = (SmsPortAddressedTextMessage)result.getSmsMessage();
 		Assert.assertEquals(textMsg.getDestPort_(), smsmsg.getDestPort_());
 		Assert.assertEquals(textMsg.getOrigPort_(), smsmsg.getOrigPort_());
 		Assert.assertEquals(textMsg.getText(), smsmsg.getText());
@@ -110,12 +110,12 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 	public void testMMSPUSH()
 	{
 		CmppSubmitRequestMessage msg = createTestReq("");
-		SmsMmsNotificationMessage mms = new SmsMmsNotificationMessage("http://www.baidu.com/abc/sfd",50*1024);
+		SmsMmsNotificationMessage mms = new SmsMmsNotificationMessage("https://www.baidu.com/s?wd=SMPPv3.4%20%E9%95%BF%E7%9F%AD%E4%BF%A1&rsv_spt=1&rsv_iqid=0xdd4666100001e74c&issp=1&f=8&rsv_bp=1&rsv_idx=2&ie=utf-8&rqlang=cn&tn=baiduhome_pg&rsv_enter=0&oq=SMPPv%2526lt%253B.4%2520ton%2520npi&rsv_t=50fdNrphqry%2FYfHh29wvp8KzJ9ogqigiPr33FT%2FpcGQu6X34vByQNu4O%2FLNZgIiXdd16&inputT=3203&rsv_pq=d576ead9000016eb&rsv_sug3=60&rsv_sug1=15&rsv_sug7=000&rsv_sug2=0&rsv_sug4=3937&rsv_sug=1",50*1024);
 		mms.setFrom("10085");
 		mms.setSubject("这是一条测试彩信，彩信消息ID是：121241");
 		msg.setMsgContent(mms);
 		CmppSubmitRequestMessage result =testWapCodec(msg);
-		SmsMmsNotificationMessage smsmsg = (SmsMmsNotificationMessage)result.getMsg();
+		SmsMmsNotificationMessage smsmsg = (SmsMmsNotificationMessage)result.getSmsMessage();
 		Assert.assertEquals(mms.getSubject_(), smsmsg.getSubject_());
 		Assert.assertEquals(mms.getContentLocation_(), smsmsg.getContentLocation_());
 		Assert.assertEquals(mms.getFrom_(), smsmsg.getFrom_());
@@ -125,7 +125,6 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 	public void testseptedMsg(){
 
 		String origin = "112aaaasssss2334455@£$¥èéùìòçØøÅåΔ_ΦΓΛΩΠΨΣΘΞ^{}\\[~]|€ÆæßÉ!\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-		System.out.println(origin);
 		CmppSubmitRequestMessage msg = createTestReq(origin);
 		msg.setMsgContent(new SmsTextMessage(origin));
 		
@@ -148,7 +147,6 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 	public CmppSubmitRequestMessage  testWapCodec(CmppSubmitRequestMessage msg)
 	{
 
-		msg.setSupportLongMsg(true);
 		channel().writeOutbound(msg);
 		ByteBuf buf =(ByteBuf)channel().readOutbound();
 		ByteBuf copybuf = Unpooled.buffer();
@@ -158,8 +156,8 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 	    	copybuf.writeBytes(buf.copy());
 			int length = buf.readableBytes();
 			
-			Assert.assertEquals(length, buf.readUnsignedInt());
-			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
+			Assert.assertEquals(length, buf.readInt());
+			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
 			
 
 			buf =(ByteBuf)channel().readOutbound();
@@ -168,14 +166,13 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 		CmppSubmitRequestMessage result = decode(copybuf);
 		System.out.println(result);
 		Assert.assertEquals(msg.getServiceId(), result.getServiceId());
-		Assert.assertTrue(result.getMsg() instanceof SmsMessage);
+		Assert.assertTrue(result.getSmsMessage() instanceof SmsMessage);
 		return result;
 	}
 	
 	public void testlongCodec(CmppSubmitRequestMessage msg)
 	{
 
-		msg.setSupportLongMsg(true);
 		channel().writeOutbound(msg);
 		ByteBuf buf =(ByteBuf)channel().readOutbound();
 		ByteBuf copybuf = Unpooled.buffer();
@@ -185,8 +182,8 @@ public class TestCmppSubmitRequestMessageCodec  extends AbstractTestMessageCodec
 	    	copybuf.writeBytes(buf.copy());
 			int length = buf.readableBytes();
 			
-			Assert.assertEquals(length, buf.readUnsignedInt());
-			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
+			Assert.assertEquals(length, buf.readInt());
+			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
 			
 
 			buf =(ByteBuf)channel().readOutbound();

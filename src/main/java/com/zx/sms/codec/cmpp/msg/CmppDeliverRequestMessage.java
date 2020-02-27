@@ -3,7 +3,13 @@
  */
 package com.zx.sms.codec.cmpp.msg;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import org.marre.sms.SmsAlphabet;
+import org.marre.sms.SmsDcs;
 import org.marre.sms.SmsMessage;
+import org.marre.sms.SmsMsgClass;
 import org.marre.sms.SmsPortAddressedTextMessage;
 import org.marre.sms.SmsTextMessage;
 import org.marre.wap.push.SmsMmsNotificationMessage;
@@ -12,9 +18,13 @@ import org.marre.wap.push.WapSIPush;
 import org.marre.wap.push.WapSLPush;
 import org.marre.wap.wbxml.WbxmlDocument;
 
+import com.zx.sms.LongSMSMessage;
 import com.zx.sms.codec.cmpp.packet.CmppPacketType;
+import com.zx.sms.codec.cmpp.wap.LongMessageFrame;
+import com.zx.sms.codec.cmpp.wap.LongMessageFrameHolder;
 import com.zx.sms.common.GlobalConstance;
 import com.zx.sms.common.util.CMPPCommonUtil;
+import com.zx.sms.common.util.DefaultSequenceNumberUtil;
 import com.zx.sms.common.util.MsgId;
 
 /**
@@ -22,7 +32,7 @@ import com.zx.sms.common.util.MsgId;
  * @author Lihuanghe(18852780@qq.com)
  *
  */
-public class CmppDeliverRequestMessage extends DefaultMessage {
+public class CmppDeliverRequestMessage extends DefaultMessage implements LongSMSMessage<CmppDeliverRequestMessage> {
 	private static final long serialVersionUID = 4851585208067281751L;
 	private MsgId msgId = new MsgId();
 	private String destId = GlobalConstance.emptyString;
@@ -37,11 +47,13 @@ public class CmppDeliverRequestMessage extends DefaultMessage {
 
 	private String reserved = GlobalConstance.emptyString;
 
-	private boolean isReport = false;
-	
 	private SmsMessage msg;
 
-	private boolean supportLongMsg = true;
+	private short tppid = 0;// 0是普通GSM 类型，点到点方式 ,127 :写sim卡
+	private short tpudhi = 0; // 0:msgcontent不带协议头。1:带有协议头
+	private SmsDcs msgfmt = GlobalConstance.defaultmsgfmt;
+	private short msgLength = 140;
+	private byte[] msgContentBytes = GlobalConstance.emptyBytes;
 
 	public CmppDeliverRequestMessage(Header header) {
 		super(CmppPacketType.CMPPDELIVERREQUEST, header);
@@ -127,25 +139,6 @@ public class CmppDeliverRequestMessage extends DefaultMessage {
 	}
 
 	/**
-	 * @return the registeredDelivery
-	 */
-	public short getRegisteredDelivery() {
-		return registeredDelivery;
-	}
-
-	/**
-	 * @param registeredDelivery
-	 *            the registeredDelivery to set
-	 */
-	public void setRegisteredDelivery(short registeredDelivery) {
-		this.registeredDelivery = registeredDelivery;
-		if (this.registeredDelivery != 0) {
-			setReport(true);
-			setReportRequestMessage(this.reportRequestMessage);
-		}
-	}
-
-	/**
 	 * @return the reserved
 	 */
 	public String getReserved() {
@@ -173,6 +166,9 @@ public class CmppDeliverRequestMessage extends DefaultMessage {
 	 */
 	public void setReportRequestMessage(CmppReportRequestMessage reportRequestMessage) {
 		this.reportRequestMessage = reportRequestMessage;
+		if (reportRequestMessage != null) {
+			this.registeredDelivery = (short) 1;
+		}
 	}
 
 	/**
@@ -194,59 +190,78 @@ public class CmppDeliverRequestMessage extends DefaultMessage {
 	 * @return the isReport
 	 */
 	public boolean isReport() {
-		return isReport;
-	}
-
-	/**
-	 * @param isReport
-	 *            the isReport to set
-	 */
-	public void setReport(boolean isReport) {
-		this.isReport = isReport;
+		return this.registeredDelivery != 0;
 	}
 
 	public String getMsgContent() {
-		if(msg instanceof SmsTextMessage){
-			SmsTextMessage textMsg = (SmsTextMessage) msg;
-			return textMsg.getText();
-		}else if(msg instanceof SmsPortAddressedTextMessage){
-			SmsPortAddressedTextMessage textMsg = (SmsPortAddressedTextMessage) msg;
-			return textMsg.getText();
-		}else if(msg instanceof SmsMmsNotificationMessage){
-			SmsMmsNotificationMessage mms = (SmsMmsNotificationMessage) msg;
-			return mms.getContentLocation_();
-		}else if(msg instanceof SmsWapPushMessage){
-			SmsWapPushMessage wap = (SmsWapPushMessage) msg;
-			WbxmlDocument wbxml = wap.getWbxml();
-			if(wbxml instanceof WapSIPush){
-				return ((WapSIPush)wbxml).getUri();
-			}else if(wbxml instanceof WapSLPush){
-				return ((WapSLPush)wbxml).getUri();
-			}
+		if (msg instanceof SmsMessage) {
+			return msg.toString();
 		}
+
+		if (msgContentBytes != null && msgContentBytes.length > 0) {
+			LongMessageFrame frame = generateFrame();
+			return LongMessageFrameHolder.INS.getPartTextMsg(frame);
+		}
+
 		return "";
 	}
 
-	public boolean isSupportLongMsg() {
-		return supportLongMsg;
+	public short getTppid() {
+		return tppid;
 	}
 
-	public void setSupportLongMsg(boolean supportLongMsg) {
-		this.supportLongMsg = true;
+	public void setTppid(short tppid) {
+		this.tppid = tppid;
+	}
+
+	public short getTpudhi() {
+		return tpudhi;
+	}
+
+	public void setTpudhi(short tpudhi) {
+		this.tpudhi = tpudhi;
+	}
+
+	public SmsDcs getMsgfmt() {
+		return msgfmt;
+	}
+
+	public void setMsgfmt(SmsDcs msgfmt) {
+		this.msgfmt = msgfmt;
+	}
+
+	public short getMsgLength() {
+		return msgLength;
+	}
+
+	public void setMsgLength(short msgLength) {
+		this.msgLength = msgLength;
+	}
+
+	public byte[] getMsgContentBytes() {
+		return msgContentBytes;
+	}
+
+	public void setMsgContentBytes(byte[] msgContentBytes) {
+		this.msgContentBytes = msgContentBytes;
+	}
+
+	public void setMsg(SmsMessage msg) {
+		this.msg = msg;
 	}
 
 	/**
 	 * @return the msgContent
 	 */
 	public void setMsgContent(String msgContent) {
-		this.msg = CMPPCommonUtil.buildTextMessage(msgContent);
+		setMsgContent(CMPPCommonUtil.buildTextMessage(msgContent));
 	}
-	
-	public void setMsgContent(SmsMessage msg){
+
+	public void setMsgContent(SmsMessage msg) {
 		this.msg = msg;
 	}
 
-	public SmsMessage getMsg() {
+	public SmsMessage getSmsMessage() {
 		return msg;
 	}
 
@@ -258,12 +273,55 @@ public class CmppDeliverRequestMessage extends DefaultMessage {
 	public String toString() {
 		if (isReport()) {
 			StringBuilder sb = new StringBuilder();
-			sb.append("CmppDeliverRequestMessage [msgId=").append(msgId ).append( ", destId=" ).append( destId ).append( ", srcterminalId=" ).append( srcterminalId ).append( ", getHeader()=" ).append( getHeader() ).append( ", ReportRequest=" ).append( getReportRequestMessage() ).append( "]");
+			sb.append("CmppDeliverRequestMessage [msgId=").append(msgId).append(", destId=").append(destId).append(", srcterminalId=").append(srcterminalId)
+					.append(", getHeader()=").append(getHeader()).append(", ReportRequest=").append(getReportRequestMessage()).append("]");
 			return sb.toString();
 		}
 		StringBuilder sb = new StringBuilder();
 		sb.append("CmppDeliverRequestMessage [msgId=").append(msgId).append(", destId=").append(destId).append(", srcterminalId=").append(srcterminalId)
-				.append(", msgContent=").append(getMsgContent()).append(", SmsMessageType=").append(msg==null?"":msg.getClass().getSimpleName()).append(", sequenceId=").append(getHeader().getSequenceId()).append("]");
+				.append(", msgContent=").append(getMsgContent()).append(", sequenceId=").append(getHeader().getSequenceId()).append("]");
 		return sb.toString();
+	}
+
+	@Override
+	public LongMessageFrame generateFrame() {
+		LongMessageFrame frame = new LongMessageFrame();
+		frame.setTppid(getTppid());
+		frame.setTpudhi(getTpudhi());
+		frame.setMsgfmt(getMsgfmt());
+		frame.setMsgContentBytes(getMsgContentBytes());
+		frame.setMsgLength((short) getMsgLength());
+		frame.setSequence(getSequenceNo());
+		return frame;
+	}
+
+	@Override
+	public CmppDeliverRequestMessage generateMessage(LongMessageFrame frame) throws Exception {
+		CmppDeliverRequestMessage requestMessage = this.clone();
+		requestMessage.setTpudhi(frame.getTpudhi());
+		requestMessage.setMsgfmt(frame.getMsgfmt());
+		requestMessage.setMsgContentBytes(frame.getMsgContentBytes());
+		requestMessage.setMsgLength((short) frame.getMsgLength());
+
+		if (frame.getPknumber() != 1) {
+			requestMessage.getHeader().setSequenceId(DefaultSequenceNumberUtil.getSequenceNo());
+		}
+		requestMessage.setMsg(null);
+		return requestMessage;
+	}
+
+	private List<CmppDeliverRequestMessage> fragments = null;
+
+	@Override
+	public List<CmppDeliverRequestMessage> getFragments() {
+		return fragments;
+	}
+
+	@Override
+	public void addFragment(CmppDeliverRequestMessage fragment) {
+		if (fragments == null)
+			fragments = new ArrayList<CmppDeliverRequestMessage>();
+
+		fragments.add(fragment);
 	}
 }

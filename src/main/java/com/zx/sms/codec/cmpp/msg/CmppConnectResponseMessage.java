@@ -2,7 +2,6 @@ package com.zx.sms.codec.cmpp.msg;
 
 import org.apache.commons.codec.binary.Hex;
 
-import com.zx.sms.codec.cmpp.packet.CmppConnectResponse;
 import com.zx.sms.codec.cmpp.packet.CmppPacketType;
 import com.zx.sms.common.GlobalConstance;
 
@@ -20,7 +19,7 @@ public class CmppConnectResponseMessage extends DefaultMessage{
     public CmppConnectResponseMessage(Header header ) {
     	super(CmppPacketType.CMPPCONNECTRESPONSE,header);
 	}
-    public CmppConnectResponseMessage(long sequenceId) {
+    public CmppConnectResponseMessage(int sequenceId) {
     	super(CmppPacketType.CMPPCONNECTRESPONSE,sequenceId);
 	}
 	/**
@@ -65,5 +64,8 @@ public class CmppConnectResponseMessage extends DefaultMessage{
         this.version = version;
     }
 
- 
+	@Override
+	public String toString() {
+		return String.format("CmppConnectResponseMessage [version=%s, status=%s,authenticatorISMG = %s, sequenceId=%s]", version, status,Hex.encodeHexString(authenticatorISMG), getHeader().getSequenceId());
+	}
 }

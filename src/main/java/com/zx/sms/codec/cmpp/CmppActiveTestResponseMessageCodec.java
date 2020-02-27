@@ -3,6 +3,7 @@
  */
 package com.zx.sms.codec.cmpp;
 
+import static com.zx.sms.common.util.NettyByteBufUtil.toArray;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -36,7 +37,7 @@ public class CmppActiveTestResponseMessageCodec extends MessageToMessageCodec<Me
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, Message msg, List<Object> out) throws Exception {
-		long commandId = ((Long) msg.getHeader().getCommandId()).longValue();
+		int commandId = msg.getHeader().getCommandId();
 		if (packetType.getCommandId() != commandId)
 		{
 			//不解析，交给下一个codec
@@ -46,7 +47,11 @@ public class CmppActiveTestResponseMessageCodec extends MessageToMessageCodec<Me
 
 		CmppActiveTestResponseMessage responseMessage = new CmppActiveTestResponseMessage(msg.getHeader());
 		ByteBuf  bodyBuffer = Unpooled.wrappedBuffer(msg.getBodyBuffer());
-		responseMessage.setReserved(bodyBuffer.readByte());
+		
+		//甘肃测试环境回包缺少reserved字段，这里要容错
+		if(bodyBuffer.readableBytes()>0)
+			responseMessage.setReserved(bodyBuffer.readByte());
+		
 		ReferenceCountUtil.release(bodyBuffer);
 		out.add(responseMessage);
 	}
@@ -54,9 +59,9 @@ public class CmppActiveTestResponseMessageCodec extends MessageToMessageCodec<Me
 	@Override
 	protected void encode(ChannelHandlerContext ctx, CmppActiveTestResponseMessage msg, List<Object> out) throws Exception {
 		
-		ByteBuf bodyBuffer = Unpooled.buffer(CmppActiveTestResponse.RESERVED.getLength());
+		ByteBuf bodyBuffer = ctx.alloc().buffer(CmppActiveTestResponse.RESERVED.getBodyLength());
 		bodyBuffer.writeByte(msg.getReserved());
-		msg.setBodyBuffer(bodyBuffer.array());
+		msg.setBodyBuffer(toArray(bodyBuffer,bodyBuffer.readableBytes()));
 		msg.getHeader().setBodyLength(msg.getBodyBuffer().length);
 		ReferenceCountUtil.release(bodyBuffer);
 		out.add(msg);

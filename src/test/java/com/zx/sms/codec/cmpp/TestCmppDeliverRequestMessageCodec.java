@@ -63,7 +63,6 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 		reportRequestMessage.setDestterminalId("13800138000");
 		reportRequestMessage.setStat("9876");
 		msg.setReportRequestMessage(reportRequestMessage);
-		msg.setRegisteredDelivery((short) 1);
 		test0(msg);
 	}
 
@@ -75,9 +74,9 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 
 		int length = buf.readableBytes();
 		
-		Assert.assertEquals(length, buf.readUnsignedInt());
-		Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
-		Assert.assertEquals(msg.getHeader().getSequenceId(), buf.readUnsignedInt());
+		Assert.assertEquals(length, buf.readInt());
+		Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
+		Assert.assertEquals(msg.getHeader().getSequenceId(), buf.readInt());
 
 		buf.release();
 		CmppDeliverRequestMessage result = decode(newbuf);
@@ -103,11 +102,10 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 		// 70个汉字
 		msg.setMsgContent(content);
 		msg.setMsgId(new MsgId());
-		msg.setRegisteredDelivery((short) 0);
 		msg.setServiceid("10086");
 		msg.setSrcterminalId("13800138000");
 		msg.setSrcterminalType((short) 1);
-		header.setSequenceId(System.nanoTime() & 0x7fffffff);
+		header.setSequenceId((int)System.nanoTime());
 		return msg;
 	}
 	
@@ -133,7 +131,7 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 		SmsMessage wap = new SmsWapPushMessage(sl);
 		msg.setMsgContent(wap);
 		CmppDeliverRequestMessage result = testWapCodec(msg);
-		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getMsg();
+		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getSmsMessage();
 		WapSLPush actsl = (WapSLPush)smsmsg.getWbxml();
 		Assert.assertEquals(sl.getUri(), actsl.getUri());
 	}
@@ -146,7 +144,7 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 		SmsMessage wap = new SmsWapPushMessage(si);
 		msg.setMsgContent(wap);
 		CmppDeliverRequestMessage result = testWapCodec(msg);
-		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getMsg();
+		SmsWapPushMessage smsmsg = (SmsWapPushMessage)result.getSmsMessage();
 		WapSIPush actsi = (WapSIPush)smsmsg.getWbxml();
 		Assert.assertEquals(si.getUri(), actsi.getUri());
 		Assert.assertEquals(si.getMessage(), actsi.getMessage());
@@ -156,18 +154,16 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 	public void testMMSPUSH()
 	{
 		CmppDeliverRequestMessage msg = createTestReq("");
-		SmsMmsNotificationMessage mms = new SmsMmsNotificationMessage("http://www.baidu.com",50*1024);
+		SmsMmsNotificationMessage mms = new SmsMmsNotificationMessage("https://www.baidu.com/s?wd=SMPPv3.4%20%E9%95%BF%E7%9F%AD%E4%BF%A1&rsv_spt=1&rsv_iqid=0xdd4666100001e74c&issp=1&f=8&rsv_bp=1&rsv_idx=2&ie=utf-8&rqlang=cn&tn=baiduhome_pg&rsv_enter=0&oq=SMPPv%2526lt%253B.4%2520ton%2520npi&rsv_t=50fdNrphqry%2FYfHh29wvp8KzJ9ogqigiPr33FT%2FpcGQu6X34vByQNu4O%2FLNZgIiXdd16&inputT=3203&rsv_pq=d576ead9000016eb&rsv_sug3=60&rsv_sug1=15&rsv_sug7=000&rsv_sug2=0&rsv_sug4=3937&rsv_sug=1",50*1024);
 		msg.setMsgContent(mms);
 		mms.setTransactionId("ABC");
 		CmppDeliverRequestMessage result =testWapCodec(msg);
-		SmsMmsNotificationMessage smsmsg = (SmsMmsNotificationMessage)result.getMsg();
-		
+		SmsMmsNotificationMessage smsmsg = (SmsMmsNotificationMessage)result.getSmsMessage();
 		Assert.assertEquals(smsmsg.getContentLocation_(), smsmsg.getContentLocation_());
 	}
 	
 	public CmppDeliverRequestMessage testWapCodec(CmppDeliverRequestMessage msg)
 	{
-		msg.setSupportLongMsg(true);
 		channel().writeOutbound(msg);
 		ByteBuf buf =(ByteBuf)channel().readOutbound();
 		ByteBuf copybuf = Unpooled.buffer();
@@ -177,8 +173,8 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 	    	copybuf.writeBytes(buf.copy());
 			int length = buf.readableBytes();
 			
-			Assert.assertEquals(length, buf.readUnsignedInt());
-			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
+			Assert.assertEquals(length, buf.readInt());
+			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
 			
 
 			buf =(ByteBuf)channel().readOutbound();
@@ -186,15 +182,13 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 	    
 	    CmppDeliverRequestMessage result = decode(copybuf);
 		System.out.println(result);
-		Assert.assertTrue(result.getMsg() instanceof SmsMessage);
+		Assert.assertTrue(result.getSmsMessage() instanceof SmsMessage);
 		return result;
 	}
 	
 	public void testlongCodec(CmppDeliverRequestMessage msg)
 	{
 		
-		
-		msg.setSupportLongMsg(true);
 		channel().writeOutbound(msg);
 		ByteBuf buf =(ByteBuf)channel().readOutbound();
 		ByteBuf copybuf = Unpooled.buffer();
@@ -204,8 +198,8 @@ public class TestCmppDeliverRequestMessageCodec extends AbstractTestMessageCodec
 	    	copybuf.writeBytes(buf.copy());
 			int length = buf.readableBytes();
 			
-			Assert.assertEquals(length, buf.readUnsignedInt());
-			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readUnsignedInt());
+			Assert.assertEquals(length, buf.readInt());
+			Assert.assertEquals(msg.getPacketType().getCommandId(), buf.readInt());
 			
 
 			buf =(ByteBuf)channel().readOutbound();

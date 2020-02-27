@@ -1,11 +1,8 @@
 package com.zx.sms.common.storedMap;
 
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
 
-import com.zx.sms.codec.cmpp.msg.Message;
-
-public interface StoredMapFactory<K,T> {
+public interface StoredMapFactory<K,T extends VersionObject> {
 	
 	/**
 	 * @param storedpath
@@ -15,8 +12,4 @@ public interface StoredMapFactory<K,T> {
 	 */
 	Map<K,T> buildMap(String storedpath,String name);
 	
-	BlockingQueue<Message> getQueue(String storedpath,String name);
-	
-	
-
 }
